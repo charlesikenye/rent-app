@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import { initialTenants } from "../data/tenants";
-import { usePayments } from "./PaymentsContext";
+import { supabase } from "../api/supabaseClient"; // Added import for supabase client
 
 const monthNames = [
   "January",
@@ -97,7 +97,7 @@ const computePaymentStatus = (tenant: any, receipts: any[]) => {
 };
 
 export function PaymentsPage() {
-  const { payments, updatePayment } = usePayments();
+  const [payments, setPayments] = useState<any[]>([]);
   const [selectedBlock, setSelectedBlock] = useState<string>("");
   const [tenantPayments, setTenantPayments] = useState<any[]>([]);
   const [viewTenant, setViewTenant] = useState<any | null>(null);
@@ -109,8 +109,21 @@ export function PaymentsPage() {
   const [editPayment, setEditPayment] = useState<any>(null);
 
   useEffect(() => {
+    fetchPayments();
+  }, []);
+
+  useEffect(() => {
     loadPayments();
   }, [selectedBlock, payments]);
+
+  const fetchPayments = async () => {
+    const { data, error } = await supabase.from("payments").select("*");
+    if (error) {
+      console.error("Error fetching payments:", error);
+      return;
+    }
+    setPayments(data || []);
+  };
 
   const loadPayments = () => {
     if (!selectedBlock) {
@@ -174,18 +187,28 @@ export function PaymentsPage() {
     setIsEditOpen(true);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editPayment) return;
-    updatePayment({
-      tenantId: editPayment.tenantId,
-      tenantName: viewTenant.name,
-      unit: viewTenant.unit,
-      dueDate: editPayment.dueDate,
-      paidDate: new Date().toISOString(),
-      amount: editPayment.amount,
-      method: "Manual Edit",
-      status: "Paid", // Changed from "Updated" to valid status
-    });
+
+    const { error } = await supabase.from("payments").insert([
+      {
+        tenantId: editPayment.tenantId,
+        tenantName: viewTenant.name,
+        unit: viewTenant.unit,
+        dueDate: editPayment.dueDate,
+        paidDate: new Date().toISOString(),
+        amount: editPayment.amount,
+        method: "Manual Edit",
+        status: "Paid",
+      },
+    ]);
+
+    if (error) {
+      console.error("Error saving payment:", error);
+      return;
+    }
+
+    await fetchPayments();
     if (viewTenant) handleViewTenant(viewTenant.id);
     setIsEditOpen(false);
   };
